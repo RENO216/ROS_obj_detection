@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-## Author: Rohit
-## Date: July, 25, 2017
 # Purpose: Ros node to detect objects using tensorflow
 
 import os
@@ -21,6 +19,7 @@ from std_msgs.msg import String , Header
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose
+from std_msgs.msg import Float32
 
 # Object detection module imports
 import object_detection
@@ -70,6 +69,8 @@ class Detector:
     def __init__(self):
         self.image_pub = rospy.Publisher("debug_image",Image, queue_size=1)
         self.object_pub = rospy.Publisher("objects", Detection2DArray, queue_size=1)
+        self.steer_pub = rospy.Publisher("steer_pre", Float32, queue_size=1)
+        self.coll_pub = rospy.Publisher("coll_pre", Float32, queue_size=1)
         self.bridge = CvBridge()
         self.image_sub = rospy.Subscriber("image", Image, self.image_cb, queue_size=1, buff_size=2**24)
         self.sess = tf.Session(graph=detection_graph,config=config)
@@ -108,6 +109,30 @@ class Detector:
             use_normalized_coordinates=True,
             line_thickness=2)
 
+        min_distance = 1
+        coll_prob = 0
+        steer_angle  = 0
+        for i, b in enumerate(boxes[0]):
+            #                 car                    bus                  truck
+            # if classes[0][i] == 3 or classes[0][i] == 6 or classes[0][i] == 8:
+            if scores[0][i] >= 0.5:
+                mid_x = (boxes[0][i][1] + boxes[0][i][3]) / 2
+                mid_y = (boxes[0][i][0] + boxes[0][i][2]) / 2
+                apx_distance = round(((1 - (boxes[0][i][3] - boxes[0][i][1])) ** 4), 1)
+                # find the closest object
+                if apx_distance <= min_distance:
+                    min_distance = apx_distance
+                    min_dis_index_x, min_dis_index_y = mid_x, mid_y
+
+        coll_prob = 1 - min_distance
+        # print(coll_prob)
+        self.coll_pub.publish(coll_prob)
+        if min_distance <= 0.3:
+            if 0.3 <= min_dis_index_x <= 0.5:
+                steer_angle = -2.5 * min_dis_index_x + 0.25                
+            elif 0.5 < min_dis_index_x <= 0.8:
+                steer_angle = -2.5 * min_dis_index_x + 2.25
+        self.steer_pub.publish(steer_angle)
         objArray.detections =[]
         objArray.header=data.header
         object_count=1
@@ -126,6 +151,8 @@ class Detector:
             print(e)
         image_out.header = data.header
         self.image_pub.publish(image_out)
+
+        
 
     def object_predict(self,object_data, header, image_np,image):
         image_height,image_width,channels = image.shape
@@ -153,7 +180,7 @@ def main(args):
     try:
         rospy.spin()
     except KeyboardInterrupt:
-        print("ShutDown")
+        print("<---ShutDown---> CLOSE DETECTION")
     cv2.destroyAllWindows()
 
 if __name__=='__main__':

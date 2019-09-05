@@ -1,10 +1,36 @@
 <launch>
-	<node pkg= "tensorflow_object_detector" name="detect_ros" type="detect_ros.py"  output="screen"> 
-    <remap from='image' to='/camera/rgb/image_raw'/>
-	</node>
+  <!-- connect to drone-->
+	<arg name="droneip" default="192.168.1.1" />
+  <node name="ardrone_driver" pkg="ardrone_autonomy" type="ardrone_driver" output="screen" args="-ip $(arg droneip)">
+    <param name="navdata_demo" value="False" />
+    <param name="realtime_navdata" value="True" />
+    <param name="realtime_video" value="True" />
+    <param name="looprate" value="30" />
+  </node>
+
+  <!-- object detection -->
+	<node pkg= "tensorflow_object_detector" name="detect_ros" type="detect_ros.py"  output="screen" > 
+    <remap from='image' to='/ardrone/image_raw'/>
+	</node> `
+
 	<!-- rviz -->
-  <arg name ="rviz" default="true" />
+  <!--arg name ="rviz" default="true" />
   <arg name ="rviz_file" default="$(find tensorflow_object_detector)/config/display.rviz"/>
 	<node pkg ="rviz" type="rviz" name="rviz" output="screen" args= "-d $(arg rviz_file)" if="$(arg rviz)"/>
-  <include file="$(find openni2_launch)/launch/openni2.launch"/>
+  <include file="$(find openni2_launch)/launch/openni2.launch"/-->
+
+  <!-- view detected objects-->
+  <node pkg="image_view" type="image_view" name="image_view">
+    <remap from="image" to="/debug_image"/>
+  </node>
+
+  <!--takeoff-->
+  <node pkg="drone_control" name="takeoff" type="takeoff.py" output="screen"/>
+
+  <!--drone control-->
+  <node pkg="drone_control" name="deep_navigation" type="deep_navigation.py" output="screen">
+    <remap from='steer' to='steer_pre'/>
+    <remap from='coll' to='coll_pre'/>
+  </node>
+
 </launch>
